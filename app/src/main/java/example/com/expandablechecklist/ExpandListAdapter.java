@@ -1,6 +1,7 @@
 package example.com.expandablechecklist;
 
 import android.content.Context;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,7 +24,8 @@ public class ExpandListAdapter extends BaseExpandableListAdapter {
     String[] testChildData =  {"10","20","30", "40", "50"};
     String[] testgroupData =  {"Apple","Banana","Mango", "Orange", "Pineapple", "Strawberry"};
     Context mContext;
-    ArrayList<ArrayList<Boolean>> selectedCheckBox = new ArrayList<>();
+    ArrayList<ArrayList<Boolean>> selectedChildCheckBoxStates = new ArrayList<>();
+    ArrayList<Boolean> selectedParentCheckBoxesState = new ArrayList<>();
     TotalListener mListener;
 
     public void setmListener(TotalListener mListener) {
@@ -35,7 +37,8 @@ public class ExpandListAdapter extends BaseExpandableListAdapter {
     }
 
     class ViewHolder {
-        public TextView groupName;
+        public CheckBox groupName;
+        public TextView dummyTextView; // View to expand or shrink the list
         public CheckBox childCheckBox;
     }
 
@@ -49,6 +52,25 @@ public class ExpandListAdapter extends BaseExpandableListAdapter {
                 prices.add(testChildData[j]);
         }
             mGroupList.add(i, prices);
+        }
+
+        //initialize default check states of checkboxes
+        initCheckStates(false);
+    }
+
+    /**
+     * Called to initialize the default check states of items
+     * @param defaultState : false
+     */
+    private void initCheckStates(boolean defaultState) {
+        for(int i = 0 ; i < mGroupList.size(); i++){
+            selectedParentCheckBoxesState.add(i, defaultState);
+            ArrayList<Boolean> childStates = new ArrayList<>();
+            for(int j = 0; j < mGroupList.get(i).size(); j++){
+                childStates.add(defaultState);
+            }
+
+            selectedChildCheckBoxStates.add(i, childStates);
         }
     }
 
@@ -88,20 +110,60 @@ public class ExpandListAdapter extends BaseExpandableListAdapter {
     }
 
     @Override
-    public View getGroupView(int groupPosition, boolean isExpanded, View convertView, ViewGroup parent) {
+    public View getGroupView(final int groupPosition, final boolean isExpanded, View convertView, ViewGroup parent) {
         ViewHolder holder;
         if(convertView == null) {
             LayoutInflater inflater = (LayoutInflater) mContext.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
             convertView = inflater.inflate(R.layout.group_layout, null);
             holder = new ViewHolder();
-            holder.groupName = (TextView) convertView.findViewById(R.id.group_text_view);
+            holder.groupName = (CheckBox) convertView.findViewById(R.id.group_chk_box);
+            holder.dummyTextView = (TextView) convertView.findViewById(R.id.dummy_txt_view);
             convertView.setTag(holder);
         }else{
             holder = (ViewHolder) convertView.getTag();
         }
 
-        //set your group item data
         holder.groupName.setText(testgroupData[groupPosition]);
+        if(selectedParentCheckBoxesState.size() <= groupPosition){
+            selectedParentCheckBoxesState.add(groupPosition, false);
+        }else {
+            holder.groupName.setChecked(selectedParentCheckBoxesState.get(groupPosition));
+        }
+
+
+
+        holder.groupName.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+//                //Callback to expansion of group item
+                if(!isExpanded)
+                mListener.expandGroupEvent(groupPosition, isExpanded);
+
+                boolean state = selectedParentCheckBoxesState.get(groupPosition);
+                Log.d("TAG", "STATE = " + state);
+                selectedParentCheckBoxesState.remove(groupPosition);
+                selectedParentCheckBoxesState.add(groupPosition, state ? false : true);
+
+                    for (int i = 0; i < mGroupList.get(groupPosition).size(); i++) {
+
+                            selectedChildCheckBoxStates.get(groupPosition).remove(i);
+                            selectedChildCheckBoxStates.get(groupPosition).add(i, state ? false : true);
+                    }
+                notifyDataSetChanged();
+                showTotal(groupPosition);
+            }
+        });
+
+
+        //callback to expand or shrink list view from dummy text click
+        holder.dummyTextView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+//                //Callback to expansion of group item
+                mListener.expandGroupEvent(groupPosition, isExpanded);
+            }
+        });
+
             return convertView;
     }
 
@@ -121,7 +183,7 @@ public class ExpandListAdapter extends BaseExpandableListAdapter {
 
 
         holder.childCheckBox.setText(mGroupList.get(groupPosition).get(childPosition));
-                if(selectedCheckBox.size() <= groupPosition) {
+                if(selectedChildCheckBoxStates.size() <= groupPosition) {
                     ArrayList<Boolean> childState = new ArrayList<>();
                     for(int i= 0; i < mGroupList.get(groupPosition).size(); i++){
                         if(childState.size() > childPosition)
@@ -129,35 +191,47 @@ public class ExpandListAdapter extends BaseExpandableListAdapter {
                         else
                             childState.add(false);
                     }
-                    if(selectedCheckBox.size() > groupPosition) {
-                        selectedCheckBox.add(groupPosition, childState);
+                    if(selectedChildCheckBoxStates.size() > groupPosition) {
+                        selectedChildCheckBoxStates.add(groupPosition, childState);
                     }else
-                        selectedCheckBox.add(childState);
+                        selectedChildCheckBoxStates.add(childState);
                 }else{
-                    holder.childCheckBox.setChecked(selectedCheckBox.get(groupPosition).get(childPosition));
+                    holder.childCheckBox.setChecked(selectedChildCheckBoxStates.get(groupPosition).get(childPosition));
                 }
             holder.childCheckBox.setOnClickListener(new View.OnClickListener() {
 
             @Override
             public void onClick(View v) {
-                boolean state = selectedCheckBox.get(groupPosition).get(childPosition);
-                selectedCheckBox.get(groupPosition).remove(childPosition);
-                selectedCheckBox.get(groupPosition).add(childPosition,  state ? false : true);
+                boolean state = selectedChildCheckBoxStates.get(groupPosition).get(childPosition);
+                selectedChildCheckBoxStates.get(groupPosition).remove(childPosition);
+                selectedChildCheckBoxStates.get(groupPosition).add(childPosition, state ? false : true);
 
-                //Below code is to get the sum of checked prices
-                int sum = 0;
-                for(int j = 0 ; j < selectedCheckBox.size(); j++){
-                for(int i = 0; i < selectedCheckBox.get(groupPosition).size(); i++) {
-                    if (selectedCheckBox.get(j).get(i)) {
-                        sum += Integer.parseInt(mGroupList.get(j).get(i));
-                    }
-                }
-                    mListener.onTotalChanged(sum);
-                }
+                showTotal(groupPosition);
+
             }
         });
 
         return convertView;
+    }
+
+    /**
+     * Called to reflect the sum of checked prices
+     * @param groupPosition : group position of list
+     */
+    private void showTotal(int groupPosition) {
+        //Below code is to get the sum of checked prices
+        int sum = 0;
+        for(int j = 0 ; j < selectedChildCheckBoxStates.size(); j++) {
+            Log.d("TAG", "J = " + j);
+                for (int i = 0; i < selectedChildCheckBoxStates.get(groupPosition).size(); i++) {
+                    Log.d("TAG", "I = " + i);
+
+                    if (selectedChildCheckBoxStates.get(j).get(i)) {
+                        sum += Integer.parseInt(mGroupList.get(j).get(i));
+                    }
+                }
+            }
+        mListener.onTotalChanged(sum);
     }
 
     @Override

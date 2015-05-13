@@ -51,4 +51,12 @@ public class MainActivity extends Activity implements TotalListener{
     public void onTotalChanged(int sum) {
         mTextView.setText("Total = " + sum);
     }
+
+    @Override
+    public void expandGroupEvent(int groupPosition, boolean isExpanded) {
+            if(isExpanded)
+                listView.collapseGroup(groupPosition);
+            else
+                listView.expandGroup(groupPosition);
+    }
 }
